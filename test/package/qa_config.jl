@@ -26,9 +26,11 @@ const QA_CONFIG = (
     # `[`name`](@ref)`, e.g. (:pdf, :cdf, :logpdf).
     crossref_ignore = (),
 
-    # Extra docstring-format options, e.g.
-    # (; exported_only_examples = true, require_field_docs = true).
-    docstring = (;),
+    # Extra docstring-format options. This is a tooling package whose exported
+    # helpers need external fixtures (hub clones, an R toolchain, registry
+    # files) to exemplify, so the `@example`-block requirement is dropped;
+    # runnable usage lives in the docs getting-started page instead.
+    docstring = (; require_examples = false),
 
     # README section-structure check. `path` is the package root (its
     # README.md). Override `required`/`order` to extend or relax the standard

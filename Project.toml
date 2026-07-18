@@ -1,10 +1,26 @@
 name = "MultiHubForecaster"
 uuid = "525aad59-d3de-42a6-b01e-5bd86bbfc5c3"
-authors = ["Sam Abbott"]
 version = "0.1.0"
-
-[compat]
-julia = "1.11, 1.12"
+authors = ["Sam Abbott"]
 
 [workspace]
 projects = ["test", "docs"]
+
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Parquet2 = "98572fba-bba0-415d-956f-fa77e587d26d"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+
+[compat]
+CSV = "0.10"
+DataFrames = "1"
+DocStringExtensions = "0.9"
+LinearAlgebra = "1"
+Parquet2 = "0.2"
+TOML = "1"
+YAML = "0.4"
+julia = "1.11, 1.12"
