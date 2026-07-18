@@ -1,0 +1,23 @@
+# PACKAGE-OWNED — scaffold writes this once and never overwrites it.
+# The benchmark environment, so `julia --project=benchmark benchmark/run.jl`
+# resolves. Seeded with BenchmarkTools, the package, the AD backends the suite
+# benchmarks, and the shared EpiAwarePackageTools benchmark harness.
+[deps]
+ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+DifferentiationInterface = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+EpiAwarePackageTools = "7aaea248-0d11-4a0d-a7dc-86da30abb951"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+LogDensityProblems = "6fdf6af0-433a-55f7-b3ed-c6c6e0b8df7c"
+Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
+MultiHubForecaster = "525aad59-d3de-42a6-b01e-5bd86bbfc5c3"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[sources]
+EpiAwarePackageTools = {rev = "main", url = "https://github.com/EpiAware/EpiAwarePackageTools.jl"}
+MultiHubForecaster = {path = ".."}

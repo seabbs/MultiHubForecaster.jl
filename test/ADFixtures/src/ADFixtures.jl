@@ -153,9 +153,27 @@ broken_scenario_names() = String[]
 
 Per-backend broken scenario names (`Dict{String, Set{String}}`), populated
 honestly from the actual `test/ad` run rather than by silencing.
+
+Result matrix (3 scenarios × 3 backends), Julia 1.11:
+
+| scenario                          | ForwardDiff | Mooncake | Enzyme |
+|-----------------------------------|:-----------:|:--------:|:------:|
+| Baseline count posterior          |      ✓      |    ✓    |   ✓   |
+| Baseline count+backfill posterior |      ✓      |    ✓    |   ✗   |
+| Baseline proportion posterior     |      ✓      |    ✓    |   ✓   |
+
+ForwardDiff (the reference) and Mooncake differentiate every scenario correctly,
+so Mooncake is the working default backend. Enzyme differentiates the count and
+proportion posteriors, but the count+backfill posterior raises
+`EnzymeNoShadowError` (a missing shadow for the `@jl_world_counter` global)
+through the `arraydist` reporting-completion prior — a real Enzyme limitation on
+that construction, not a defect in the model (it samples fine under NUTS with
+ForwardDiff or Mooncake). It is recorded as `@test_broken` for Enzyme rather
+than hidden.
 """
 function backend_broken_scenarios()
-    return Dict{String, Set{String}}()
+    return Dict{String, Set{String}}(
+        "Enzyme reverse" => Set(["Baseline count+backfill posterior"]))
 end
 
 "Per-backend scenario names too unstable to even run (segfault/hang)."
