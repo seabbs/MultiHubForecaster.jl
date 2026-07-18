@@ -137,10 +137,11 @@ One walk-forward cross-validation fold: a forecast origin date and the rows of
 the source table available for training at that origin.
 
 `train_rows` holds integer row indices into the table passed to
-[`walk_forward_folds`](@ref). It contains only rows strictly before
-`origin_date` (and, when a vintage column is used, only rows whose vintage is
-at or before the origin), so a fold never sees data at or after its origin
-— no leakage.
+[`walk_forward_folds`](@ref). `origin_date` is the fold's last observed week
+(the `reference_date`); `train_rows` contains only rows at or before it (and,
+when a vintage column is used, only rows whose vintage is at or before it), and
+forecasts run from horizon 1 = one step after `origin_date` — so a fold never
+sees data after its origin. No leakage.
 
 ---
 ## Fields
@@ -153,15 +154,17 @@ struct Fold
     train_rows::Vector{Int}
 end
 
-# Row indices available at `origin`: strictly before the origin date, and (when
-# `as_of_col` is given) with a vintage recorded at or before the origin.
+# Row indices available at `origin` (the last observed week): dated at or before
+# the origin, and (when `as_of_col` is given) with a vintage at or before it.
+# The origin week IS the reference date, so its data is used and forecasts run
+# from one step after it — see `Fold`.
 function _available_rows(df, origin, date_col, as_of_col)
     dates = df[!, date_col]
     if as_of_col === nothing
-        return findall(<(origin), dates)
+        return findall(<=(origin), dates)
     end
     asof = df[!, as_of_col]
-    return findall(i -> dates[i] < origin && asof[i] <= origin,
+    return findall(i -> dates[i] <= origin && asof[i] <= origin,
         eachindex(dates))
 end
 

@@ -42,9 +42,11 @@ end
     @test issorted(origins)
     @test all(o -> o <= split.train_end, origins)
 
-    # No leakage: every training row is strictly before its origin.
+    # No leakage: every training row is at or before its origin, and the origin
+    # is the fold's last observed week (reference_date), not one step past it.
     for f in folds
-        @test all(df.date[f.train_rows] .< f.origin_date)
+        @test all(df.date[f.train_rows] .<= f.origin_date)
+        @test maximum(df.date[f.train_rows]) == f.origin_date
     end
     # Expanding window: later folds have at least as many training rows.
     counts = [length(f.train_rows) for f in folds]
@@ -68,7 +70,7 @@ end
         min_train = Week(52), horizon = 2, as_of_col = :as_of)
     @test !isempty(folds)
     for f in folds
-        @test all(df.date[f.train_rows] .< f.origin_date)
+        @test all(df.date[f.train_rows] .<= f.origin_date)
         @test all(df.as_of[f.train_rows] .<= f.origin_date)
     end
 end
