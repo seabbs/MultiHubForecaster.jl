@@ -1,6 +1,6 @@
 name = "MultiHubForecaster"
 uuid = "525aad59-d3de-42a6-b01e-5bd86bbfc5c3"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Sam Abbott"]
 
 [workspace]
