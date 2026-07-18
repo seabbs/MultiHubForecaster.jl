@@ -6,9 +6,9 @@
     @test fit isa Function
     @test forecast isa Function
 
-    # No concrete model ships with the package: the generics have no methods.
-    @test isempty(methods(fit))
-    @test isempty(methods(forecast))
+    # The package ships the `Baseline` model, so the generics carry its methods.
+    @test !isempty(methods(fit))
+    @test !isempty(methods(forecast))
 
     # A downstream model can subtype and add methods against the contract.
     struct DummyModel <: AbstractForecastModel end
