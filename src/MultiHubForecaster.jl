@@ -18,6 +18,7 @@ using DocStringExtensions: @template, DOCSTRING, EXPORTS, IMPORTS,
                            TYPEDEF, TYPEDFIELDS, TYPEDSIGNATURES
 
 import ADTypes
+import Arrow
 import CSV
 import DataFrames
 import Dates
@@ -64,5 +65,17 @@ public Skeleton
 
 include("baseline.jl")
 public Baseline, BaselineFit
+
+# Backtesting / experiment harness: time-ordered splits, walk-forward folds,
+# and the scoring runner. Reuses the compiled Turing model across folds in one
+# session (see the efficiency note in `backtest.jl`).
+include("backtest.jl")
+export DateSplit, date_split, partition, Fold, walk_forward_folds,
+       run_backtest, BacktestResult
+
+# Experiment storage: ZSTD-compressed Arrow tables plus a TOML run manifest.
+include("storage.jl")
+export save_experiment, load_experiment, write_scores, read_scores,
+       write_forecasts, read_forecasts, write_manifest, read_manifest
 
 end # module
