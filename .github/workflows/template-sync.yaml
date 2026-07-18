@@ -81,7 +81,7 @@ jobs:
         run: |
           julia --color=yes -e '
               using Pkg
-              Pkg.activate(; temp = true); Pkg.add(url = "https://github.com/seabbs/EpiAwarePackageTools.jl", rev = "main")
+              Pkg.activate(; temp = true); Pkg.add(url = "https://github.com/EpiAware/EpiAwarePackageTools.jl", rev = "main")
               using EpiAwarePackageTools
               res = scaffold_update("."; ad = true, benchmarks = false, downgrade_compat = true)
               println("re-applied ", length(res.updated), " managed files")'

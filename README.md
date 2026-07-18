@@ -3,7 +3,7 @@
 <!-- badges:start -->
 | **Documentation** | **Build Status** | **Code Quality** | **License & DOI** | **Downloads** |
 |:-----------------:|:----------------:|:----------------:|:-----------------:|:-------------:|
-| [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://epiaware.org/MultiHubForecaster.jl/stable/) [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://epiaware.org/MultiHubForecaster.jl/dev/) | [![Test](https://github.com/seabbs/MultiHubForecaster.jl/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/seabbs/MultiHubForecaster.jl/actions/workflows/test.yaml) [![codecov](https://codecov.io/gh/seabbs/MultiHubForecaster.jl/graph/badge.svg)](https://codecov.io/gh/seabbs/MultiHubForecaster.jl) [![AD](https://github.com/seabbs/MultiHubForecaster.jl/actions/workflows/ad.yaml/badge.svg?branch=main)](https://github.com/seabbs/MultiHubForecaster.jl/actions/workflows/ad.yaml) | [![SciML Code Style](https://img.shields.io/static/v1?label=code%20style&message=SciML&color=9558b2&labelColor=389826)](https://github.com/SciML/SciMLStyle) [![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl) [![JET](https://img.shields.io/badge/%E2%9C%88%EF%B8%8F%20tested%20with%20-%20JET.jl%20-%20red)](https://github.com/aviatesk/JET.jl) | [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) | [![Downloads](https://img.shields.io/badge/dynamic/json?url=http%3A%2F%2Fjuliapkgstats.com%2Fapi%2Fv1%2Ftotal_downloads%2FMultiHubForecaster&query=total_requests&label=Downloads)](https://juliapkgstats.com/pkg/MultiHubForecaster) [![Downloads](https://img.shields.io/badge/dynamic/json?url=http%3A%2F%2Fjuliapkgstats.com%2Fapi%2Fv1%2Fmonthly_downloads%2FMultiHubForecaster&query=total_requests&suffix=%2Fmonth&label=Downloads)](https://juliapkgstats.com/pkg/MultiHubForecaster) |
+| [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://seabbs.github.io/MultiHubForecaster.jl/stable/) [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://seabbs.github.io/MultiHubForecaster.jl/dev/) | [![Test](https://github.com/seabbs/MultiHubForecaster.jl/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/seabbs/MultiHubForecaster.jl/actions/workflows/test.yaml) [![codecov](https://codecov.io/gh/seabbs/MultiHubForecaster.jl/graph/badge.svg)](https://codecov.io/gh/seabbs/MultiHubForecaster.jl) [![AD](https://github.com/seabbs/MultiHubForecaster.jl/actions/workflows/ad.yaml/badge.svg?branch=main)](https://github.com/seabbs/MultiHubForecaster.jl/actions/workflows/ad.yaml) | [![SciML Code Style](https://img.shields.io/static/v1?label=code%20style&message=SciML&color=9558b2&labelColor=389826)](https://github.com/SciML/SciMLStyle) [![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl) [![JET](https://img.shields.io/badge/%E2%9C%88%EF%B8%8F%20tested%20with%20-%20JET.jl%20-%20red)](https://github.com/aviatesk/JET.jl) | [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) | [![Downloads](https://img.shields.io/badge/dynamic/json?url=http%3A%2F%2Fjuliapkgstats.com%2Fapi%2Fv1%2Ftotal_downloads%2FMultiHubForecaster&query=total_requests&label=Downloads)](https://juliapkgstats.com/pkg/MultiHubForecaster) [![Downloads](https://img.shields.io/badge/dynamic/json?url=http%3A%2F%2Fjuliapkgstats.com%2Fapi%2Fv1%2Fmonthly_downloads%2FMultiHubForecaster&query=total_requests&suffix=%2Fmonth&label=Downloads)](https://juliapkgstats.com/pkg/MultiHubForecaster) |
 
 | ForwardDiff | ReverseDiff (tape) | Enzyme forward | Enzyme reverse | Mooncake reverse | Mooncake forward |
 |:---:|:---:|:---:|:---:|:---:|:---:|
@@ -55,7 +55,7 @@ write_submission(forecast_table, hub_path)
 ## Documentation
 
 Rendered documentation is published at
-[epiaware.org/MultiHubForecaster.jl](https://epiaware.org/MultiHubForecaster.jl/stable/),
+[seabbs.github.io/MultiHubForecaster.jl](https://seabbs.github.io/MultiHubForecaster.jl/stable/),
 with the public API reference and a getting-started guide.
 
 <!-- standard-sections:start -->
@@ -73,5 +73,5 @@ If you use MultiHubForecaster in your work, please cite it. Citation metadata li
 
 ## Code of conduct
 
-Please note that the MultiHubForecaster project is released with a [Contributor Code of Conduct](https://github.com/seabbs/.github/blob/main/CODE_OF_CONDUCT.md). By contributing, you agree to abide by its terms.
+Please note that the MultiHubForecaster project is released with a [Contributor Code of Conduct](https://github.com/EpiAware/.github/blob/main/CODE_OF_CONDUCT.md). By contributing, you agree to abide by its terms.
 <!-- standard-sections:end -->

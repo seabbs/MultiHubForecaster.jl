@@ -25,7 +25,7 @@ MultiHubForecaster = {path = ".."}
 # Until EpiAwarePackageTools is registered, it is pinned by git so
 # the env resolves out of the box. Switch to a local path to
 # develop the kit alongside this package.
-EpiAwarePackageTools = {url = "https://github.com/seabbs/EpiAwarePackageTools.jl", rev = "main"}
+EpiAwarePackageTools = {url = "https://github.com/EpiAware/EpiAwarePackageTools.jl", rev = "main"}
 
 [compat]
 Documenter = "1"
