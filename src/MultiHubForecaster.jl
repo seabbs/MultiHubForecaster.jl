@@ -65,7 +65,7 @@ include("components.jl")
 public AbstractLink, LogLink, LogitLink, apply_link, inverse_link
 public AbstractLatent, ARGrowthRate
 public AbstractSeasonality, FourierSeasonality
-public AbstractObservation, NegativeBinomialObs, BetaObs
+public AbstractObservation, NegativeBinomialObs, BetaObs, LogNormalObs
 public generate
 
 # The generic `Skeleton` framing and the `Baseline` model built on it. Both are

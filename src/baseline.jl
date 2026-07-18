@@ -19,22 +19,28 @@
 # Weakly-informative default priors. Non-centred throughout: the growth-rate AR
 # innovations are standard normal (scaled by `growth_sd`), the seasonal
 # coefficients are small, and the level is centred at run time on the observed
-# scale (see `_level_prior`). The `growth_sd` half-normal is deliberately tight
-# (scale 0.1): it regularises the latent towards a smooth trend so high-frequency
-# variation is attributed to observation dispersion rather than absorbed by the
-# random-walk level, which keeps the dispersion identifiable.
+# scale (see `_level_prior`). The `growth_sd` prior is a half-Cauchy (scale
+# 0.2): its mode at zero still regularises the latent towards a smooth trend on
+# well-behaved series (keeping observation dispersion identifiable), but its
+# heavy tail lets the innovation SD be learned large when the data demand fast
+# growth. The earlier tight half-normal (scale 0.1) under-dispersed count
+# forecasts and, at very large counts, could not track the rise so the NB size
+# collapsed to zero and the logpdf threw under AD (issue #6); the heavy tail
+# fixes both while the half-Cauchy's zero mode preserves identifiability.
 function _default_priors()
     return (;
         damp = Distributions.truncated(Distributions.Normal(0, 0.5), -1, 1),
         growth_init = Distributions.Normal(0, 0.2),
         growth_sd = Distributions.truncated(
-            Distributions.Normal(0, 0.1), 0, Inf),
+            Distributions.Cauchy(0, 0.2), 0, Inf),
         seas_coef = Distributions.Normal(0, 0.3),
         level_sd = 1.0,
         nb_disp = Distributions.truncated(
             Distributions.Normal(0, 20), 0, Inf),
         beta_prec = Distributions.truncated(
-            Distributions.Normal(0, 200), 0, Inf))
+            Distributions.Normal(0, 200), 0, Inf),
+        logn_sigma = Distributions.truncated(
+            Distributions.Normal(0, 1), 0, Inf))
 end
 
 # Data-scaled, weakly-informative prior on the initial linear-predictor level
@@ -48,8 +54,9 @@ function _level_prior(link::AbstractLink, y, sd::Real)
     return Distributions.Normal(inverse_link(link, m0), sd)
 end
 
-# The link for a target type: log for counts, logit for proportions.
-_link_for(target_type::Symbol) = target_type === :count ? LogLink() : LogitLink()
+# The link for a target type: log for counts and rates (both positive, log-scale
+# latent), logit for proportions in `(0, 1)`.
+_link_for(target_type::Symbol) = target_type === :proportion ? LogitLink() : LogLink()
 
 # --- the model type -----------------------------------------------------------
 
@@ -63,10 +70,10 @@ independently — no cross-location pooling yet.
 Its components are a non-centred growth-rate AR(`p`) latent
 ([`ARGrowthRate`](@ref)) and `n_harmonics` Fourier harmonics (`period`,
 [`FourierSeasonality`](@ref)) on the shared linear-predictor scale, a per-data-
-type link ([`LogLink`](@ref) for `:count`, [`LogitLink`](@ref) for
-`:proportion`), and a matching observation ([`NegativeBinomialObs`](@ref) for
-counts, [`BetaObs`](@ref) for proportions) chosen by `target_type`. Backfill is
-not modelled.
+type link ([`LogLink`](@ref) for `:count` and `:rate`, [`LogitLink`](@ref) for
+`:proportion`), and a matching observation chosen by `target_type`:
+[`NegativeBinomialObs`](@ref) for counts, [`BetaObs`](@ref) for proportions, and
+[`LogNormalObs`](@ref) for unbounded positive rates. Backfill is not modelled.
 
 Its `priors` field carries the prior settings (see
 `MultiHubForecaster._default_priors`).
@@ -85,7 +92,8 @@ model = MultiHubForecaster.Baseline(; target_type = :count, p = 2)
 ```
 """
 struct Baseline{P <: NamedTuple} <: AbstractForecastModel
-    "Target type driving the link and observation: `:count` or `:proportion`."
+    "Target type driving the link and observation: `:count`, `:proportion`, or
+    `:rate`."
     target_type::Symbol
     "Growth-rate AR order `p`."
     p::Int
@@ -101,15 +109,16 @@ end
 $(TYPEDSIGNATURES)
 
 Construct a [`Baseline`](@ref) with weakly-informative defaults. `target_type`
-is `:count` (log link, negative binomial) or `:proportion` (logit link, Beta);
+is `:count` (log link, negative binomial), `:proportion` (logit link, Beta), or
+`:rate` (log link, log-normal — for unbounded positive rate/incidence targets);
 `p` is the growth-rate AR order, `n_harmonics` the number of Fourier harmonics,
 and `period` the seasonal period.
 """
 function Baseline(; target_type::Symbol = :count, p::Int = 2,
         n_harmonics::Int = 2, period::Real = 52.0,
         priors::NamedTuple = _default_priors())
-    target_type in (:count, :proportion) ||
-        throw(ArgumentError("target_type must be :count or :proportion"))
+    target_type in (:count, :proportion, :rate) || throw(ArgumentError(
+        "target_type must be :count, :proportion, or :rate"))
     p ≥ 1 || throw(ArgumentError("p must be ≥ 1"))
     n_harmonics ≥ 1 || throw(ArgumentError("n_harmonics must be ≥ 1"))
     return Baseline{typeof(priors)}(
@@ -125,8 +134,13 @@ function _components(model::Baseline, y, t0)
     latent = ARGrowthRate(model.p, pr.damp, pr.growth_sd,
         _level_prior(link, y, pr.level_sd), pr.growth_init)
     seas = FourierSeasonality(model.n_harmonics, model.period, pr.seas_coef, t0)
-    obs = model.target_type === :count ?
-          NegativeBinomialObs(pr.nb_disp) : BetaObs(pr.beta_prec)
+    obs = if model.target_type === :count
+        NegativeBinomialObs(pr.nb_disp)
+    elseif model.target_type === :proportion
+        BetaObs(pr.beta_prec)
+    else
+        LogNormalObs(pr.logn_sigma)
+    end
     return latent, seas, link, obs
 end
 
@@ -237,8 +251,13 @@ function _forecast_draws(model::Baseline, chain, meta, horizon::Int,
     ε = _draws(chain, :ε)
     level = _draws(chain, :level)
     β = _draws(chain, :β)
-    disp = model.target_type === :count ?
-           _draws(chain, :r) : _draws(chain, :φ)
+    disp = if model.target_type === :count
+        _draws(chain, :r)
+    elseif model.target_type === :proportion
+        _draws(chain, :φ)
+    else
+        _draws(chain, :ν)
+    end
     D = length(σ)
     out = Matrix{Float64}(undef, horizon, D)
     times = t0 .+ (0:(n + horizon - 1))
@@ -255,10 +274,14 @@ function _forecast_draws(model::Baseline, chain, meta, horizon::Int,
             μk = apply_link(link, η[n + k])
             if model.target_type === :count
                 out[k, d] = rand(rng, _nbinom(disp[d], μk))
-            else
+            elseif model.target_type === :proportion
                 m = clamp(μk, 1.0e-6, 1 - 1.0e-6)
                 out[k, d] = rand(rng,
                     Distributions.Beta(m * disp[d], (1 - m) * disp[d]))
+            else
+                m = clamp(μk, _MIN_SIZE, _MAX_MEAN)
+                out[k, d] = rand(rng,
+                    Distributions.LogNormal(log(m), disp[d]))
             end
         end
     end

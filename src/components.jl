@@ -64,12 +64,27 @@ function _fourier(β, times, K::Int, period::Real)
     end
 end
 
+# Largest natural-scale mean allowed through an observation. `exp(30) ≈ 1.07e13`
+# is the widest the log link can produce, so clamping just below it keeps the
+# mean finite (and its gradient defined) under any warmup draw while leaving all
+# real targets — counts to ~1e5, rates to ~1e6 — far inside the bound.
+const _MAX_MEAN = 1.0e12
+# Smallest negative-binomial size allowed. The dispersion prior is truncated at
+# `0`, but a warmup draw can still map to a size of exactly `0`, at which
+# `NegativeBinomial` throws `DomainError` (`r > 0` fails) and AD then tries to
+# differentiate the throw. Flooring `r` keeps the constructor in-domain.
+const _MIN_SIZE = 1.0e-6
+
 # Negative binomial with mean `μ > 0` and size (dispersion) `r > 0`; variance is
-# `μ + μ²/r`, so larger `r` is closer to Poisson. `p` is clamped just inside
-# `(0, 1)` for numerical safety.
+# `μ + μ²/r`, so larger `r` is closer to Poisson. The size is floored away from
+# `0` and the mean clamped to a finite max so the constructor can never throw a
+# `DomainError` under an extreme warmup draw (see the count under-dispersion /
+# large-count divergence fix, issue #6); `p` is clamped just inside `(0, 1)`.
 function _nbinom(r, μ)
-    p = clamp(r / (r + μ), 1.0e-10, 1 - 1.0e-10)
-    return Distributions.NegativeBinomial(r, p)
+    rc = max(r, _MIN_SIZE)
+    μc = clamp(μ, _MIN_SIZE, _MAX_MEAN)
+    p = clamp(rc / (rc + μc), 1.0e-10, 1 - 1.0e-10)
+    return Distributions.NegativeBinomial(rc, p)
 end
 
 # --- link components ----------------------------------------------------------
@@ -220,6 +235,25 @@ struct BetaObs{P} <: AbstractObservation
     prec_prior::P
 end
 
+@doc raw"""
+$(TYPEDEF)
+
+A log-normal observation for unbounded positive rate/incidence targets (e.g.
+RespiCast ARI/ILI incidence): `y_t ~ LogNormal(log μ_t, ν)` with median
+`μ_t = apply_link(link, η_t)` and log-scale SD `ν ~ sigma_prior`. Pairs with a
+[`LogLink`](@ref): the latent is the log-median, so no `(0, 1)` bound (Beta) or
+count support (negative binomial) is imposed and the target can take any positive
+real value. The observation SD `ν` is named distinctly from the latent
+innovation SD `σ` so the two never collide in the un-prefixed submodel namespace.
+
+# Fields
+$(TYPEDFIELDS)
+"""
+struct LogNormalObs{S} <: AbstractObservation
+    "Prior on the log-normal observation SD `ν` (log scale)."
+    sigma_prior::S
+end
+
 # --- the generic component function -------------------------------------------
 
 @doc raw"""
@@ -235,7 +269,8 @@ The link is deterministic (no priors, no random variables) so it has no
   - `generate(latent::AbstractLatent, n)` — a length-`n` latent path.
   - `generate(seas::AbstractSeasonality, n)` — a length-`n` seasonal effect.
   - `generate(obs::AbstractObservation, link::AbstractLink, η, y)` — the
-    observation of `y` given the linear predictor `η` and its link.
+    observation of `y` given the linear predictor `η` and its link (negative
+    binomial for counts, Beta for proportions, log-normal for rates).
 """
 function generate end
 
@@ -272,6 +307,20 @@ DynamicPPL.@model function generate(
     for t in eachindex(y)
         m = clamp(μ[t], 1.0e-6, 1 - 1.0e-6)
         y[t] ~ Distributions.Beta(m * φ, (1 - m) * φ)
+    end
+    return μ
+end
+
+DynamicPPL.@model function generate(
+        obs::LogNormalObs, link::AbstractLink, η, y)
+    ν ~ obs.sigma_prior
+    μ = map(x -> apply_link(link, x), η)
+    for t in eachindex(y)
+        # Clamp the median to a finite positive range so `log` (the LogNormal
+        # location) stays finite under any warmup draw; `apply_link`'s own clamp
+        # already bounds `μ`, this guards the inverse.
+        m = clamp(μ[t], _MIN_SIZE, _MAX_MEAN)
+        y[t] ~ Distributions.LogNormal(log(m), ν)
     end
     return μ
 end
