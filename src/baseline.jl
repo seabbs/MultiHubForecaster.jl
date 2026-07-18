@@ -223,7 +223,11 @@ end
 # The four `Skeleton` component builders for one location's series `y` starting
 # at time index `t0`.
 function _component_builders(model::Baseline, y, t0)
-    p, K, L = model.p, model.n_harmonics, model.backfill_lag
+    p, K = model.p, model.n_harmonics
+    # Clamp the backfill window to the series length so a short location series
+    # cannot index out of range (degrades to no-op past `n` rather than a
+    # `BoundsError` deep in sampling).
+    L = min(model.backfill_lag, length(y))
     pr = model.priors
     damp_prior = Turing.filldist(pr.damp, p)
     init_prior = Turing.filldist(pr.ar_init, p)
