@@ -5,10 +5,6 @@ version: '3'
 # CensoredDistributions.jl; package-specific assumptions (a particular
 # extension, a fixed package name) are kept out so this drops into any package.
 # A package can override `PACKAGE` below, otherwise it is read from Project.toml.
-#
-# This is the no-AD variant (the package opted out of the AD harness, so the
-# AD test tasks and the AD env setup step are absent). See the AD-enabled
-# Taskfile.yml template for the variant with AD tasks.
 
 vars:
   PACKAGE:
@@ -23,7 +19,8 @@ tasks:
 
   # === TESTING WORKFLOWS ===
   test:
-    desc: Run the full test suite including quality checks
+    desc: Run the full test suite including quality and AD gradient tests
+    deps: [test-ad]
     cmds:
       - echo "🧪 Running test suite..."
       - julia --project=. --quiet -e 'using Pkg; Pkg.test()'
@@ -59,6 +56,24 @@ tasks:
       - julia --project=test/formatter test/formatter/runtests.jl
       - echo "✅ Formatting check completed"
 
+  test-ad:
+    desc: Run AD gradient tests directly (isolated environment)
+    cmds:
+      - echo "🔁 Running AD gradient tests..."
+      - julia --project=test/ad -e 'using Pkg; Pkg.instantiate()'
+      - julia --project=test/ad test/ad/runtests.jl
+      - echo "✅ AD gradient tests completed"
+
+  test-ad-backend:
+    desc: >-
+      Run AD gradient tests for a single backend tag, as the per-backend CI
+      does (e.g. TAG=enzyme_reverse task test-ad-backend)
+    cmds:
+      - echo "🔁 Running AD gradient tests for {{.TAG}}..."
+      - julia --project=test/ad -e 'using Pkg; Pkg.instantiate()'
+      - julia --project=test/ad test/ad/runtests.jl {{.TAG}}
+      - echo "✅ AD gradient tests for {{.TAG}} completed"
+
   test-extensions:
     desc: >-
       Check package extensions load by importing the package in the docs env
@@ -84,6 +99,19 @@ tasks:
       - julia --project=test -e 'using Pkg; Pkg.add("Coverage"); using Coverage; LCOV.writefile("lcov.info", process_folder())'
       - echo "✅ Coverage report generated (lcov.info)"
 
+  coverage-ad:
+    desc: >
+      Run AD gradient tests with coverage over src + ext and write
+      lcov-ad.info (mirrors CI). Pass a backend tag to scope it, e.g.
+      `task coverage-ad -- enzyme_reverse`; omit for the full union.
+    cmds:
+      - echo "📊 Running AD gradient tests with coverage..."
+      - julia --project=test/ad -e 'using Pkg; Pkg.instantiate()'
+      - julia --project=test/ad --code-coverage=user test/ad/runtests.jl {{.CLI_ARGS}}
+      - echo "📊 Processing AD coverage data (src + ext)..."
+      - julia --project=test -e 'using Pkg; Pkg.add("Coverage"); using Coverage; cov = vcat(process_folder("src"), process_folder("ext")); LCOV.writefile("lcov-ad.info", cov); clean_folder("src"); clean_folder("ext")'
+      - echo "✅ AD coverage report generated (lcov-ad.info)"
+
   # === DOCUMENTATION WORKFLOWS ===
   docs:
     desc: Build the documentation
@@ -107,10 +135,10 @@ tasks:
       - julia --project=. -e 'using Pkg; Pkg.instantiate()'
       - julia --project=test -e 'using Pkg; Pkg.instantiate()'
       - >-
-        for d in test/jet test/formatter docs benchmark; do
+        for d in test/ad test/jet test/formatter docs benchmark; do
           [ -f "$d/Project.toml" ] &&
             julia --project="$d" -e 'using Pkg; Pkg.instantiate()' || true;
-        done  # the AD env is absent in the no-AD variant
+        done
       - echo "✅ Development environment ready"
 
   setup-precompile:
