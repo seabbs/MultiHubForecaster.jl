@@ -1,0 +1,81 @@
+# Upstream hubverse forecast hubs to train across and submit to.
+# Slugs, targets, output types and activity verified on GitHub (July 2026).
+# `targets` = what the hub offers; `our_targets` = the continuous weekly
+# incident targets we actually forecast (we skip categorical rate-change and
+# peak targets). role: "train"/"submit". status = repo activity as of 2026-07.
+# See README.md for the human reference. Add hubs as they are found.
+#
+# RSV: reichlab/rsv-forecast-hub is stale (last pushed 2025-09) and excluded.
+# HopkinsIDD/rsv-forecast-hub is the live alternative (targets inc hosp,
+# cum hosp; quantile, sample) — confirm before adding.
+
+[[hub]]
+id = "flusight"
+repo = "cdcepi/FluSight-forecast-hub"
+disease = "influenza"
+targets = [
+    "wk inc flu hosp",
+    "wk inc flu prop ed visits",
+    "wk flu hosp rate change",
+    "peak inc flu hosp",
+    "peak week inc flu hosp",
+]
+our_targets = ["wk inc flu hosp", "wk inc flu prop ed visits"]
+output_types = ["quantile", "sample"]
+geography = "US national + 50 states + DC + PR (53)"
+horizons = "-1 to 3 weeks"
+cadence = "weekly (Wed deadline)"
+status = "active (pushed 2026-07-15)"
+role = ["train", "submit"]
+
+[[hub]]
+id = "covidhub"
+repo = "CDCgov/covid19-forecast-hub"
+disease = "COVID-19"
+targets = ["wk inc covid hosp", "wk inc covid prop ed visits"]
+our_targets = ["wk inc covid hosp", "wk inc covid prop ed visits"]
+output_types = ["quantile", "sample"]
+geography = "US national + 50 states + DC + PR (53)"
+horizons = "-1 to 3 weeks"
+cadence = "weekly (Wed deadline)"
+status = "active (pushed 2026-07-16)"
+role = ["train", "submit"]
+
+[[hub]]
+id = "flu-metrocast"
+repo = "reichlab/flu-metrocast"
+disease = "influenza (city/county)"
+targets = ["Flu ED visits pct", "ILI ED visits", "ILI ED visits pct"]
+our_targets = ["ILI ED visits", "ILI ED visits pct", "Flu ED visits pct"]
+output_types = ["quantile"]
+geography = "US cities and counties (e.g. NYC, Texas)"
+horizons = "weekly"
+cadence = "weekly (season)"
+status = "active (pushed 2026-07-09)"
+role = ["train", "submit"]
+
+[[hub]]
+id = "respicast-syndromic"
+repo = "european-modelling-hubs/RespiCast-SyndromicIndicators"
+disease = "respiratory syndromic (ARI/ILI)"
+targets = ["ARI incidence", "ILI incidence"]
+our_targets = ["ARI incidence", "ILI incidence"]
+output_types = ["quantile", "median"]
+geography = "European countries"
+horizons = "1-4 weeks"
+cadence = "weekly"
+status = "active (pushed 2026-07-17)"
+role = ["train", "submit"]
+
+[[hub]]
+id = "respicast-covid19"
+repo = "european-modelling-hubs/RespiCast-Covid19"
+disease = "COVID-19"
+targets = ["hospital admissions"]
+our_targets = ["hospital admissions"]
+output_types = ["quantile", "median"]
+geography = "European countries"
+horizons = "1-4 weeks"
+cadence = "weekly"
+status = "active (pushed 2026-07-17)"
+role = ["train", "submit"]
