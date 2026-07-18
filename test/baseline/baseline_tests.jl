@@ -24,7 +24,8 @@ end
     # Component types are public but not exported, and subtype correctly.
     for s in (:AbstractLatent, :ARGrowthRate, :AbstractSeasonality,
         :FourierSeasonality, :AbstractObservation, :NegativeBinomialObs,
-        :BetaObs, :AbstractLink, :LogLink, :LogitLink, :generate)
+        :BetaObs, :LogNormalObs, :AbstractLink, :LogLink, :LogitLink,
+        :generate)
         @test Base.ispublic(M, s)
         @test !Base.isexported(M, s)
     end
@@ -32,6 +33,7 @@ end
     @test M.FourierSeasonality <: M.AbstractSeasonality
     @test M.NegativeBinomialObs <: M.AbstractObservation
     @test M.BetaObs <: M.AbstractObservation
+    @test M.LogNormalObs <: M.AbstractObservation
     @test M.LogLink <: M.AbstractLink && M.LogitLink <: M.AbstractLink
 
     # Links are inverse transforms of one another.
@@ -55,6 +57,30 @@ end
     seas_path = M.generate(seas, 10)()
     @test length(seas_path) == 10
     @test all(isfinite, seas_path)
+end
+
+@testitem "Observation domain guards: NB and log-normal stay in-domain" begin
+    using MultiHubForecaster
+    const M = MultiHubForecaster
+    D = M.Distributions
+
+    # The NB constructor throws `DomainError` when the size `r` is `0`; the
+    # guard floors it so an extreme warmup draw can never throw (issue #6).
+    @test_throws DomainError D.NegativeBinomial(0.0,
+        0.5)                                     # unguarded would throw
+    for (r, μ) in ((0.0, 1.0e5), (1.0e-12, 8.0e4), (15.0, 1.0e300),
+        (0.0, 0.0), (20.0, 79000.0))
+        d = M._nbinom(r, μ)                       # must not throw
+        @test D.params(d)[1] > 0                  # size floored above 0
+        @test 0 < D.succprob(d) < 1               # p strictly inside (0, 1)
+        @test isfinite(D.logpdf(d, 80000))        # logpdf in-domain
+    end
+
+    # The log-normal observation median is clamped to a finite positive range so
+    # `log` (its location) stays finite for any linear predictor.
+    ln = M.generate(M.LogNormalObs(D.truncated(D.Normal(0, 1), 0, Inf)),
+        M.LogLink(), [1.0e6, -1.0e6, 0.0], [10.0, 0.1, 1.0])
+    @test all(isfinite, ln())
 end
 
 @testitem "Baseline: parameter recovery on simulated counts" tags=[:sample] begin
@@ -244,4 +270,138 @@ end
             target = "wk inc flu prop ed visits"); rng = MersenneTwister(7))
     @test all(isfinite, fc.value)
     @test all(0 .<= fc.value .<= 1)
+end
+
+@testitem "Baseline: large-count series fits and forecasts (issue #6)" tags=[:sample] begin
+    using MultiHubForecaster, DataFrames, Random, Dates
+    const M = MultiHubForecaster
+    D = M.Distributions
+    Random.seed!(66)
+
+    # A fast-rising count series peaking near ~80k — the regime that made the NB
+    # size collapse to zero and the logpdf throw `DomainError` under AD with the
+    # old tight growth prior. It must now fit and forecast without error.
+    n = 60
+    z = zeros(n)
+    for t in 2:n
+        z[t] = 0.6 * z[t - 1] + 0.25 * randn()
+    end
+    base = range(log(200), log(79000), length = n)
+    y = [rand(D.NegativeBinomial(20, 20 / (20 + exp(base[t] + z[t]))))
+         for t in 1:n]
+    @test maximum(y) > 50000
+    df = DataFrame(location = "a", time = 1:n, value = y)
+
+    model = M.Baseline(; target_type = :count, p = 1, n_harmonics = 1)
+    fitted = M.fit(model, df; adtype = M.ADTypes.AutoForwardDiff(),
+        ndraws = 150, nchains = 2, rng = MersenneTwister(1))
+    fc = M.forecast(fitted,
+        (; horizon = 4, reference_date = Date(2024, 1, 6),
+            target = "wk inc flu hosp"); rng = MersenneTwister(2))
+    @test all(isfinite, fc.value)
+    @test all(fc.value .>= 0)
+end
+
+@testitem "Baseline: rate target recovery, samples and forecasts" tags=[:sample] begin
+    using MultiHubForecaster, DataFrames, Random, Statistics, Dates
+    const M = MultiHubForecaster
+    D = M.Distributions
+    Random.seed!(77)
+
+    # Simulate from the log-normal rate observation the `:rate` model assumes:
+    # log-median is a growth-rate random walk, observation SD `ν`.
+    ν_true, P = 0.25, 52.0
+    βs, βc = 0.3, -0.2
+    amp_true = sqrt(βs^2 + βc^2)
+    n = 140
+    g = zeros(n)
+    for t in 2:n
+        g[t] = 0.4 * g[t - 1] + 0.1 * randn()
+    end
+    η = log(300.0) .+ cumsum(g)
+    y = map(1:n) do t
+        ω = 2π * t / P
+        m = exp(η[t] + βs * sin(ω) + βc * cos(ω))
+        rand(D.LogNormal(log(m), ν_true))
+    end
+    @test all(y .> 0)
+    df = DataFrame(location = "a", time = 1:n, value = y)
+
+    model = M.Baseline(; target_type = :rate, p = 1, n_harmonics = 1)
+    fitted = M.fit(model, df; adtype = M.ADTypes.AutoForwardDiff(),
+        ndraws = 600, nchains = 2, target_acceptance = 0.9,
+        rng = MersenneTwister(1))
+    ch = fitted.chains["a"]
+    covers(dr, tr; w = 0.95) = quantile(dr, (1 - w) / 2) <= tr <=
+                               quantile(dr, 1 - (1 - w) / 2)
+
+    ν = M._draws(ch, :ν)
+    amp = [sqrt(b[1]^2 + b[2]^2) for b in M._draws(ch, :β)]
+    # The observation SD and seasonal amplitude are recovered.
+    @test covers(ν, ν_true)
+    @test covers(amp, amp_true; w = 0.99)
+    @test isapprox(median(ν), ν_true; atol = 0.1)
+
+    fc = M.forecast(fitted,
+        (; horizon = 4, reference_date = Date(2024, 1, 6),
+            target = "ari incidence"); rng = MersenneTwister(2))
+    @test all(isfinite, fc.value)
+    @test all(fc.value .> 0)
+end
+
+@testitem "Baseline: count forecast coverage near nominal" tags=[:sample] begin
+    using MultiHubForecaster, DataFrames, Random, Statistics, Dates
+    const M = MultiHubForecaster
+    D = M.Distributions
+
+    # Fit many independent count series, forecast the held-out future, and pool
+    # the true values against the 50%/90% prediction intervals. The loosened,
+    # heavy-tailed growth prior should keep coverage near nominal (the old tight
+    # half-normal under-dispersed).
+    nloc, n, H, seed = 14, 60, 4, 100
+    rng = MersenneTwister(seed)
+    fitdf = DataFrame(location = String[], time = Int[], value = Int[])
+    truth = Dict{Tuple{String, Int}, Int}()
+    for L in 1:nloc
+        z = zeros(n + H)
+        for t in 2:(n + H)
+            z[t] = 0.35 * z[t - 1] + 0.15 * randn(rng)
+        end
+        level = log(rand(rng, 300:5000))
+        r = rand(rng, 8.0:20.0)
+        yfull = map(1:(n + H)) do t
+            ω = 2π * t / 52
+            μ = exp(level + 0.4 * sin(ω) - 0.2 * cos(ω) + z[t])
+            rand(rng, D.NegativeBinomial(r, r / (r + μ)))
+        end
+        loc = "L$L"
+        for t in 1:n
+            push!(fitdf, (loc, t, yfull[t]))
+        end
+        for k in 1:H
+            truth[(loc, k)] = yfull[n + k]
+        end
+    end
+
+    model = M.Baseline(; target_type = :count, p = 1, n_harmonics = 1)
+    fitted = M.fit(model, fitdf; adtype = M.ADTypes.AutoForwardDiff(),
+        ndraws = 300, nchains = 2, rng = MersenneTwister(seed + 1))
+    fc = M.forecast(fitted,
+        (; horizon = H, reference_date = Date(2024, 1, 6), target = "c",
+            quantile_levels = [0.05, 0.25, 0.5, 0.75, 0.95]);
+        rng = MersenneTwister(seed + 2))
+
+    hits50 = Bool[]
+    hits90 = Bool[]
+    for grp in groupby(fc, [:location, :horizon])
+        q = Dict(parse(Float64, grp.output_type_id[i]) => grp.value[i]
+        for i in 1:nrow(grp))
+        tv = truth[(grp.location[1], grp.horizon[1])]
+        push!(hits50, q[0.25] <= tv <= q[0.75])
+        push!(hits90, q[0.05] <= tv <= q[0.95])
+    end
+    c50, c90 = mean(hits50), mean(hits90)
+    # Loose bands around nominal 0.5 / 0.9 (Monte-Carlo noise on ~56 points).
+    @test 0.35 <= c50 <= 0.72
+    @test c90 >= 0.8
 end

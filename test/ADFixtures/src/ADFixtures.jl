@@ -66,24 +66,65 @@ function _sim_props(n; seed::Int = 7, φ = 80.0)
     end
 end
 
+# Simulate a large-count series (level ~80k) from the Baseline generative
+# process — the regime that made the NB size collapse to zero and the logpdf
+# throw under the old tight growth prior (issue #6). Guards the count fix and the
+# NB domain clamp under AD.
+function _sim_large_counts(n; seed::Int = 11, level = 11.0, ρ = 0.5,
+        σ = 0.3, r = 20.0)
+    rng = MersenneTwister(seed)
+    z = zeros(n)
+    for t in 2:n
+        z[t] = ρ * z[t - 1] + σ * randn(rng)
+    end
+    return [rand(rng, NegativeBinomial(r,
+                r / (r + exp(level + 0.4 * sin(2π * t / 52) + z[t]))))
+            for t in 1:n]
+end
+
+# Simulate a positive rate/incidence series from the Baseline log-normal
+# observation process (fixed seed), for the `:rate` target scenario.
+function _sim_rates(n; seed::Int = 13, level = 5.7, ρ = 0.4, σ = 0.1,
+        ν = 0.25)
+    rng = MersenneTwister(seed)
+    z = zeros(n)
+    for t in 2:n
+        z[t] = ρ * z[t - 1] + σ * randn(rng)
+    end
+    return map(1:n) do t
+        m = exp(level + 0.3 * sin(2π * t / 52) + z[t])
+        rand(rng, LogNormal(log(m), ν))
+    end
+end
+
 # Build the registry's models once, conditioned on simulated data.
 function _models()
     n = 14
     yc = _sim_counts(n)
+    yl = _sim_large_counts(n)
     yp = _sim_props(n)
+    yr = _sim_rates(n)
     count_model = MHF.Baseline(;
         target_type = :count, p = 2, n_harmonics = 1)
     count_p1 = MHF.Baseline(;
         target_type = :count, p = 1, n_harmonics = 2)
+    large_model = MHF.Baseline(;
+        target_type = :count, p = 1, n_harmonics = 1)
     prop_model = MHF.Baseline(;
         target_type = :proportion, p = 1, n_harmonics = 1)
+    rate_model = MHF.Baseline(;
+        target_type = :rate, p = 1, n_harmonics = 1)
     return [
         ("Baseline count posterior",
             MHF._series_model(count_model, yc, 1)),
         ("Baseline count p1 posterior",
             MHF._series_model(count_p1, yc, 1)),
+        ("Baseline large-count posterior",
+            MHF._series_model(large_model, yl, 1)),
         ("Baseline proportion posterior",
-            MHF._series_model(prop_model, yp, 1))
+            MHF._series_model(prop_model, yp, 1)),
+        ("Baseline rate posterior",
+            MHF._series_model(rate_model, yr, 1))
     ]
 end
 
@@ -154,20 +195,23 @@ broken_scenario_names() = String[]
 Per-backend broken scenario names (`Dict{String, Set{String}}`), populated
 honestly from the actual `test/ad` run rather than by silencing.
 
-Result matrix (3 scenarios × 3 backends), Julia 1.11/1.12:
+Result matrix (5 scenarios × 3 backends), Julia 1.11/1.12:
 
 | scenario                       | ForwardDiff | Mooncake | Enzyme |
 |--------------------------------|:-----------:|:--------:|:------:|
 | Baseline count posterior       |      ✓      |    ✓    |   ✓   |
 | Baseline count p1 posterior    |      ✓      |    ✓    |   ✓   |
+| Baseline large-count posterior |      ✓      |    ✓    |   ✓   |
 | Baseline proportion posterior  |      ✓      |    ✓    |   ✓   |
+| Baseline rate posterior        |      ✓      |    ✓    |   ✓   |
 
 All three backends differentiate every scenario correctly against the ForwardDiff
 reference. The growth-rate latent, Fourier seasonality and per-data-type
-observation are written as explicit loops (`_ar_path`, `_integrate`, `_fourier`)
-with only `filldist` array priors, so nothing blocks Enzyme; the `arraydist`
-backfill prior that previously broke Enzyme has been dropped. No scenario is
-`@test_broken`.
+observation (negative binomial, Beta, log-normal) are written as explicit loops
+(`_ar_path`, `_integrate`, `_fourier`) with only `filldist` array priors, so
+nothing blocks Enzyme; the `arraydist` backfill prior that previously broke
+Enzyme has been dropped. The large-count scenario guards the NB domain clamp and
+the loosened growth prior (issue #6). No scenario is `@test_broken`.
 """
 function backend_broken_scenarios()
     return Dict{String, Set{String}}()
