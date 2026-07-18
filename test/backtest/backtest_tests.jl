@@ -107,7 +107,7 @@ end
     folds = folds[(end - 1):end]
 
     model = M.Baseline(;
-        target_type = :count, p = 1, n_harmonics = 1, backfill_lag = 0)
+        target_type = :count, p = 1, n_harmonics = 1)
     result = M.run_backtest(model, df, folds;
         horizon = 2, target = "wk inc flu hosp", model_id = "baseline",
         adtype = M.ADTypes.AutoForwardDiff(), ndraws = 60, nchains = 2,

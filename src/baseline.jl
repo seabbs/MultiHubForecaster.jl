@@ -1,125 +1,34 @@
 # `Baseline`: a minimal-complete instance of the [`Skeleton`](@ref). It is the
-# canonical comparison baseline every experiment runs first. The model is a
-# non-centred AR(p) trend plus a few Fourier harmonics on the linear-predictor
-# scale, a minimal reporting-completion (backfill) submodel over the most recent
-# weeks, and a target-type-selected observation (negative binomial for counts,
-# Beta for proportions). Inference is NUTS through ADTypes; forecasting continues
-# each fitted non-centred innovation stream with a fresh prior-draw tail (the
-# out-of-sample technique from ComposableTuringIDModels PR #128) and draws the
-# horizon observations.
+# canonical comparison baseline every experiment runs first: a single-series
+# model (per location, no pooling yet) built from component structs — a
+# non-centred growth-rate AR(`p`) latent on the linear-predictor scale plus a few
+# Fourier harmonics, a per-data-type link (log for counts, logit for
+# proportions), and a target-type-selected observation (negative binomial for
+# counts, Beta for proportions). Backfill is not modelled yet.
 #
-# All external symbols are used qualified; the `import`s live in the main module.
-
-# --- shared forward passes (used by both the submodels and `forecast`) --------
-
-# Non-centred AR(p) path from initial conditions `z_init` (length `p`), damping
-# `damp` (length `p`), process SD `σ` and standard-normal innovations `ε` (length
-# `n - p`). Returns the length-`n` path `z_t = Σ_i damp_i z_{t-i} + σ ε_{t-p}`.
-function _ar_path(z_init, damp, σ, ε)
-    p = length(z_init)
-    n = p + length(ε)
-    T = promote_type(eltype(z_init), eltype(damp), typeof(σ), eltype(ε))
-    z = Vector{T}(undef, n)
-    @inbounds for i in 1:p
-        z[i] = z_init[i]
-    end
-    @inbounds for t in (p + 1):n
-        acc = zero(T)
-        for i in 1:p
-            acc += damp[i] * z[t - i]
-        end
-        z[t] = acc + σ * ε[t - p]
-    end
-    return z
-end
-
-# Fourier seasonal effect at `times` from `2K` coefficients `β` with `period`.
-# `β[2k-1]` weights the `k`-th sine, `β[2k]` the `k`-th cosine.
-function _fourier(β, times, K::Int, period::Real)
-    return map(times) do t
-        s = zero(eltype(β))
-        for k in 1:K
-            ω = 2 * π * k * t / period
-            s += β[2k - 1] * sin(ω) + β[2k] * cos(ω)
-        end
-        s
-    end
-end
-
-# Exponential link with the linear predictor clamped to a wide finite range, so
-# an extreme warmup draw cannot overflow the mean to `Inf` (and hand AD a `NaN`
-# gradient). The bounds sit far outside any plausible log-count.
-_safe_exp(η) = exp(clamp(η, -30.0, 30.0))
-
-# Negative binomial with mean `μ > 0` and size (dispersion) `r > 0`; variance is
-# `μ + μ²/r`, so larger `r` is closer to Poisson. `p` is clamped just inside
-# `(0, 1)` for numerical safety.
-function _nbinom(r, μ)
-    p = clamp(r / (r + μ), 1.0e-10, 1 - 1.0e-10)
-    return Distributions.NegativeBinomial(r, p)
-end
-
-# --- component submodels ------------------------------------------------------
-
-DynamicPPL.@model function _ar_process(n, p, damp_prior, init_prior, sd_prior)
-    σ ~ sd_prior
-    damp ~ damp_prior
-    ar_init ~ init_prior
-    ε ~ Turing.filldist(Distributions.Normal(), n - p)
-    return _ar_path(ar_init, damp, σ, ε)
-end
-
-DynamicPPL.@model function _fourier_seasonality(
-        n, K, period, coef_prior, level_prior, t0)
-    level ~ level_prior
-    β ~ Turing.filldist(coef_prior, 2K)
-    times = t0 .+ (0:(n - 1))
-    return level .+ _fourier(β, times, K, period)
-end
-
-DynamicPPL.@model function _backfill_completion(n, L, comp_prior)
-    frac_recent ~ comp_prior
-    T = eltype(frac_recent)
-    frac = ones(T, n)
-    @inbounds for d in 1:L
-        frac[n - L + d] = frac_recent[d]
-    end
-    return frac
-end
-
-DynamicPPL.@model function _no_backfill(n)
-    return ones(n)
-end
-
-DynamicPPL.@model function _count_obs(η, completion, y, disp_prior)
-    r ~ disp_prior
-    μ = _safe_exp.(η) .* completion
-    for t in eachindex(y)
-        y[t] ~ _nbinom(r, μ[t])
-    end
-    return μ
-end
-
-DynamicPPL.@model function _prop_obs(η, completion, y, prec_prior)
-    φ ~ prec_prior
-    μ = LogExpFunctions.logistic.(η) .* completion
-    for t in eachindex(y)
-        m = clamp(μ[t], 1.0e-6, 1 - 1.0e-6)
-        y[t] ~ Distributions.Beta(m * φ, (1 - m) * φ)
-    end
-    return μ
-end
+# Inference is NUTS through ADTypes; forecasting continues each fitted
+# growth-rate innovation stream with a fresh prior-draw tail (the out-of-sample
+# technique from ComposableTuringIDModels PR #128) and draws the horizon
+# observations.
+#
+# The shared forward passes and the component structs live in `components.jl`;
+# all external symbols are used qualified.
 
 # --- prior defaults -----------------------------------------------------------
 
-# Weakly-informative default priors. Non-centred throughout: the AR innovations
-# are standard normal (scaled by `ar_sd`), the seasonal coefficients are small,
-# and the level is centred at run time on the observed scale (see `_level_prior`).
+# Weakly-informative default priors. Non-centred throughout: the growth-rate AR
+# innovations are standard normal (scaled by `growth_sd`), the seasonal
+# coefficients are small, and the level is centred at run time on the observed
+# scale (see `_level_prior`). The `growth_sd` half-normal is deliberately tight
+# (scale 0.1): it regularises the latent towards a smooth trend so high-frequency
+# variation is attributed to observation dispersion rather than absorbed by the
+# random-walk level, which keeps the dispersion identifiable.
 function _default_priors()
     return (;
         damp = Distributions.truncated(Distributions.Normal(0, 0.5), -1, 1),
-        ar_init = Distributions.Normal(0, 1.0),
-        ar_sd = Distributions.truncated(Distributions.Normal(0, 0.5), 0, Inf),
+        growth_init = Distributions.Normal(0, 0.2),
+        growth_sd = Distributions.truncated(
+            Distributions.Normal(0, 0.1), 0, Inf),
         seas_coef = Distributions.Normal(0, 0.3),
         level_sd = 1.0,
         nb_disp = Distributions.truncated(
@@ -128,30 +37,19 @@ function _default_priors()
             Distributions.Normal(0, 200), 0, Inf))
 end
 
-# Per-lag reporting-completion prior over the most recent `L` weeks: independent
-# Betas whose mean falls from ~0.95 (oldest of the recent weeks) to ~0.6 (the
-# most recent, least-complete week). Minimal and swappable.
-function _backfill_prior(L::Int)
-    κ = 20.0
-    means = L == 1 ? [0.7] : collect(range(0.95, 0.6; length = L))
-    return Turing.arraydist([Distributions.Beta(m * κ, (1 - m) * κ)
-                             for m in means])
+# Data-scaled, weakly-informative prior on the initial linear-predictor level
+# (log mean for counts, logit mean for proportions), obtained by pushing the
+# observed mean back through the link's inverse. Centring on the observed scale
+# keeps the growth-rate latent and the seasonal effect centred on zero.
+function _level_prior(link::AbstractLink, y, sd::Real)
+    ys = collect(skipmissing(y))
+    m0 = link isa LogLink ? max(Statistics.mean(ys), 1.0) :
+         clamp(Statistics.mean(ys), 1.0e-3, 1 - 1.0e-3)
+    return Distributions.Normal(inverse_link(link, m0), sd)
 end
 
-# Data-scaled, weakly-informative prior on the linear-predictor level (log mean
-# for counts, logit mean for proportions). Centring on the observed scale keeps
-# the AR trend and seasonal effect centred on zero.
-function _level_prior(model, y)
-    ys = collect(skipmissing(y))
-    sd = model.priors.level_sd
-    if model.target_type === :count
-        m = log(max(Statistics.mean(ys), 1.0))
-    else
-        p = clamp(Statistics.mean(ys), 1.0e-3, 1 - 1.0e-3)
-        m = LogExpFunctions.logit(p)
-    end
-    return Distributions.Normal(m, sd)
-end
+# The link for a target type: log for counts, logit for proportions.
+_link_for(target_type::Symbol) = target_type === :count ? LogLink() : LogitLink()
 
 # --- the model type -----------------------------------------------------------
 
@@ -159,14 +57,16 @@ end
 $(TYPEDEF)
 
 A minimal-complete forecasting model built on the [`Skeleton`](@ref): the
-canonical MultiHubForecaster baseline.
+canonical MultiHubForecaster baseline. It fits each series (location)
+independently — no cross-location pooling yet.
 
-Its components are a non-centred AR(`p`) trend and `n_harmonics` Fourier
-harmonics (`period`) on the linear-predictor scale, a minimal reporting-
-completion submodel over the most recent `backfill_lag` weeks, and an
-observation model chosen by `target_type` (negative binomial for `:count`
-targets, Beta for `:proportion` targets). Latent trajectories are per location;
-no cross-location pooling is added yet.
+Its components are a non-centred growth-rate AR(`p`) latent
+([`ARGrowthRate`](@ref)) and `n_harmonics` Fourier harmonics (`period`,
+[`FourierSeasonality`](@ref)) on the shared linear-predictor scale, a per-data-
+type link ([`LogLink`](@ref) for `:count`, [`LogitLink`](@ref) for
+`:proportion`), and a matching observation ([`NegativeBinomialObs`](@ref) for
+counts, [`BetaObs`](@ref) for proportions) chosen by `target_type`. Backfill is
+not modelled.
 
 Its `priors` field carries the prior settings (see
 `MultiHubForecaster._default_priors`).
@@ -185,16 +85,14 @@ model = MultiHubForecaster.Baseline(; target_type = :count, p = 2)
 ```
 """
 struct Baseline{P <: NamedTuple} <: AbstractForecastModel
-    "Target type driving the observation model: `:count` or `:proportion`."
+    "Target type driving the link and observation: `:count` or `:proportion`."
     target_type::Symbol
-    "AR order `p`."
+    "Growth-rate AR order `p`."
     p::Int
     "Number of annual Fourier harmonics."
     n_harmonics::Int
     "Seasonal period in time steps (e.g. `52` for weekly data)."
     period::Float64
-    "Number of most-recent weeks given a reporting-completion adjustment."
-    backfill_lag::Int
     "Prior settings (see `MultiHubForecaster._default_priors`)."
     priors::P
 end
@@ -203,52 +101,39 @@ end
 $(TYPEDSIGNATURES)
 
 Construct a [`Baseline`](@ref) with weakly-informative defaults. `target_type`
-is `:count` (negative binomial) or `:proportion` (Beta); `p` is the AR order,
-`n_harmonics` the number of Fourier harmonics, `period` the seasonal period, and
-`backfill_lag` the number of most-recent weeks given a reporting-completion
-adjustment (`0` disables it while keeping the slot).
+is `:count` (log link, negative binomial) or `:proportion` (logit link, Beta);
+`p` is the growth-rate AR order, `n_harmonics` the number of Fourier harmonics,
+and `period` the seasonal period.
 """
 function Baseline(; target_type::Symbol = :count, p::Int = 2,
-        n_harmonics::Int = 2, period::Real = 52.0, backfill_lag::Int = 3,
+        n_harmonics::Int = 2, period::Real = 52.0,
         priors::NamedTuple = _default_priors())
     target_type in (:count, :proportion) ||
         throw(ArgumentError("target_type must be :count or :proportion"))
     p ≥ 1 || throw(ArgumentError("p must be ≥ 1"))
     n_harmonics ≥ 1 || throw(ArgumentError("n_harmonics must be ≥ 1"))
-    backfill_lag ≥ 0 || throw(ArgumentError("backfill_lag must be ≥ 0"))
     return Baseline{typeof(priors)}(
-        target_type, p, n_harmonics, Float64(period), backfill_lag, priors)
+        target_type, p, n_harmonics, Float64(period), priors)
 end
 
-# The four `Skeleton` component builders for one location's series `y` starting
-# at time index `t0`.
-function _component_builders(model::Baseline, y, t0)
-    p, K = model.p, model.n_harmonics
-    # Clamp the backfill window to the series length so a short location series
-    # cannot index out of range (degrades to no-op past `n` rather than a
-    # `BoundsError` deep in sampling).
-    L = min(model.backfill_lag, length(y))
+# The `Skeleton` component structs for one location's series `y` starting at time
+# index `t0`: a data-centred growth-rate latent, Fourier seasonality, the target-
+# type link, and the matching observation.
+function _components(model::Baseline, y, t0)
     pr = model.priors
-    damp_prior = Turing.filldist(pr.damp, p)
-    init_prior = Turing.filldist(pr.ar_init, p)
-    coef_prior = pr.seas_coef
-    level_prior = _level_prior(model, y)
-    disp_prior = model.target_type === :count ? pr.nb_disp : pr.beta_prec
-    lat = n -> _ar_process(n, p, damp_prior, init_prior, pr.ar_sd)
-    seas = n -> _fourier_seasonality(
-        n, K, model.period, coef_prior, level_prior, t0)
-    back = L == 0 ? (n -> _no_backfill(n)) :
-           (n -> _backfill_completion(n, L, _backfill_prior(L)))
+    link = _link_for(model.target_type)
+    latent = ARGrowthRate(model.p, pr.damp, pr.growth_sd,
+        _level_prior(link, y, pr.level_sd), pr.growth_init)
+    seas = FourierSeasonality(model.n_harmonics, model.period, pr.seas_coef, t0)
     obs = model.target_type === :count ?
-          ((η, c) -> _count_obs(η, c, y, disp_prior)) :
-          ((η, c) -> _prop_obs(η, c, y, disp_prior))
-    return lat, seas, back, obs
+          NegativeBinomialObs(pr.nb_disp) : BetaObs(pr.beta_prec)
+    return latent, seas, link, obs
 end
 
 # Build the `Skeleton` model for one location's series `y` at length `n`.
 function _series_model(model::Baseline, y, t0)
-    lat, seas, back, obs = _component_builders(model, y, t0)
-    return Skeleton(lat, seas, back, obs, (; n = length(y)))
+    latent, seas, link, obs = _components(model, y, t0)
+    return Skeleton(latent, seas, link, obs, (; n = length(y), y = y))
 end
 
 @doc """
@@ -338,14 +223,16 @@ const DEFAULT_QUANTILES = [
     0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99]
 
 # Out-of-sample horizon draws for one location: continue each posterior draw's
-# latent path past the fit with a fresh prior-draw innovation tail, then draw the
-# horizon observations. Returns a `horizon × ndraws` matrix.
+# growth-rate path past the fit with a fresh prior-draw innovation tail, integrate
+# it to extend the non-stationary level, then draw the horizon observations.
+# Returns a `horizon × ndraws` matrix.
 function _forecast_draws(model::Baseline, chain, meta, horizon::Int,
         rng::Random.AbstractRNG)
-    p, K = model.p, model.n_harmonics
+    K = model.n_harmonics
     n, t0 = meta.n, meta.t0
+    link = _link_for(model.target_type)
     damp = _draws(chain, :damp)
-    ar_init = _draws(chain, :ar_init)
+    growth_init = _draws(chain, :growth_init)
     σ = _draws(chain, :σ)
     ε = _draws(chain, :ε)
     level = _draws(chain, :level)
@@ -356,21 +243,22 @@ function _forecast_draws(model::Baseline, chain, meta, horizon::Int,
     out = Matrix{Float64}(undef, horizon, D)
     times = t0 .+ (0:(n + horizon - 1))
     for d in 1:D
-        # Extend the non-centred innovation stream with a fresh prior tail so the
-        # latent path continues the fit rather than being redrawn (PR #128).
+        # Extend the non-centred growth innovation stream with a fresh prior tail
+        # so the growth path (and the integrated level) continues the fit rather
+        # than being redrawn (PR #128).
         ε_ext = vcat(ε[d], randn(rng, horizon))
-        z = _ar_path(ar_init[d], damp[d], σ[d], ε_ext)
-        s = level[d] .+ _fourier(β[d], times, K, model.period)
+        g = _ar_path(growth_init[d], damp[d], σ[d], ε_ext)
+        z = _integrate(level[d], g)
+        s = _fourier(β[d], times, K, model.period)
         η = z .+ s
         for k in 1:horizon
-            ηk = η[n + k]
+            μk = apply_link(link, η[n + k])
             if model.target_type === :count
-                μ = _safe_exp(ηk)
-                out[k, d] = rand(rng, _nbinom(disp[d], μ))
+                out[k, d] = rand(rng, _nbinom(disp[d], μk))
             else
-                μ = clamp(LogExpFunctions.logistic(ηk), 1.0e-6, 1 - 1.0e-6)
+                m = clamp(μk, 1.0e-6, 1 - 1.0e-6)
                 out[k, d] = rand(rng,
-                    Distributions.Beta(μ * disp[d], (1 - μ) * disp[d]))
+                    Distributions.Beta(m * disp[d], (1 - m) * disp[d]))
             end
         end
     end
@@ -382,9 +270,9 @@ $(TYPEDSIGNATURES)
 
 Produce a hubverse forecast table from a [`BaselineFit`](@ref).
 
-For each fitted location, `forecast` continues every posterior draw's latent
+For each fitted location, `forecast` continues every posterior draw's growth-rate
 path over `spec.horizon` weeks — extending its non-centred innovation stream with
-a fresh prior-draw tail so the trajectory continues the fit — then draws the
+a fresh prior-draw tail so the integrated level continues the fit — then draws the
 horizon observations. It returns a `DataFrames.DataFrame` in the hubverse
 model-output schema (`reference_date`, `target`, `horizon`, `target_end_date`,
 `location`, `output_type`, `output_type_id`, `value`), ready for the scoring and

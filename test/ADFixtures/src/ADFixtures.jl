@@ -72,16 +72,16 @@ function _models()
     yc = _sim_counts(n)
     yp = _sim_props(n)
     count_model = MHF.Baseline(;
-        target_type = :count, p = 2, n_harmonics = 1, backfill_lag = 0)
-    count_bf = MHF.Baseline(;
-        target_type = :count, p = 2, n_harmonics = 1, backfill_lag = 2)
+        target_type = :count, p = 2, n_harmonics = 1)
+    count_p1 = MHF.Baseline(;
+        target_type = :count, p = 1, n_harmonics = 2)
     prop_model = MHF.Baseline(;
-        target_type = :proportion, p = 1, n_harmonics = 1, backfill_lag = 0)
+        target_type = :proportion, p = 1, n_harmonics = 1)
     return [
         ("Baseline count posterior",
             MHF._series_model(count_model, yc, 1)),
-        ("Baseline count+backfill posterior",
-            MHF._series_model(count_bf, yc, 1)),
+        ("Baseline count p1 posterior",
+            MHF._series_model(count_p1, yc, 1)),
         ("Baseline proportion posterior",
             MHF._series_model(prop_model, yp, 1))
     ]
@@ -154,26 +154,23 @@ broken_scenario_names() = String[]
 Per-backend broken scenario names (`Dict{String, Set{String}}`), populated
 honestly from the actual `test/ad` run rather than by silencing.
 
-Result matrix (3 scenarios × 3 backends), Julia 1.11:
+Result matrix (3 scenarios × 3 backends), Julia 1.11/1.12:
 
-| scenario                          | ForwardDiff | Mooncake | Enzyme |
-|-----------------------------------|:-----------:|:--------:|:------:|
-| Baseline count posterior          |      ✓      |    ✓    |   ✓   |
-| Baseline count+backfill posterior |      ✓      |    ✓    |   ✗   |
-| Baseline proportion posterior     |      ✓      |    ✓    |   ✓   |
+| scenario                       | ForwardDiff | Mooncake | Enzyme |
+|--------------------------------|:-----------:|:--------:|:------:|
+| Baseline count posterior       |      ✓      |    ✓    |   ✓   |
+| Baseline count p1 posterior    |      ✓      |    ✓    |   ✓   |
+| Baseline proportion posterior  |      ✓      |    ✓    |   ✓   |
 
-ForwardDiff (the reference) and Mooncake differentiate every scenario correctly,
-so Mooncake is the working default backend. Enzyme differentiates the count and
-proportion posteriors, but the count+backfill posterior raises
-`EnzymeNoShadowError` (a missing shadow for the `@jl_world_counter` global)
-through the `arraydist` reporting-completion prior — a real Enzyme limitation on
-that construction, not a defect in the model (it samples fine under NUTS with
-ForwardDiff or Mooncake). It is recorded as `@test_broken` for Enzyme rather
-than hidden.
+All three backends differentiate every scenario correctly against the ForwardDiff
+reference. The growth-rate latent, Fourier seasonality and per-data-type
+observation are written as explicit loops (`_ar_path`, `_integrate`, `_fourier`)
+with only `filldist` array priors, so nothing blocks Enzyme; the `arraydist`
+backfill prior that previously broke Enzyme has been dropped. No scenario is
+`@test_broken`.
 """
 function backend_broken_scenarios()
-    return Dict{String, Set{String}}(
-        "Enzyme reverse" => Set(["Baseline count+backfill posterior"]))
+    return Dict{String, Set{String}}()
 end
 
 "Per-backend scenario names too unstable to even run (segfault/hang)."
