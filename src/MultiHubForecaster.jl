@@ -17,11 +17,20 @@ module MultiHubForecaster
 using DocStringExtensions: @template, DOCSTRING, EXPORTS, IMPORTS,
                            TYPEDEF, TYPEDFIELDS, TYPEDSIGNATURES
 
+import ADTypes
 import CSV
 import DataFrames
+import Dates
+import Distributions
+import DynamicPPL
+import FlexiChains
 import LinearAlgebra
+import LogExpFunctions
 import Parquet2
+import Random
+import Statistics
 import TOML
+import Turing
 import YAML
 
 include("docstrings.jl")
@@ -46,5 +55,14 @@ export HubValidationResult, validate_submission
 # Forecasting-model interface (contract only, no concrete model).
 include("model_interface.jl")
 export AbstractForecastModel, fit, forecast
+
+# The generic `Skeleton` framing and the `Baseline` model built on it. Both are
+# `public` (Julia 1.11 keyword) but not exported; reached as
+# `MultiHubForecaster.Skeleton` / `.Baseline`.
+include("skeleton.jl")
+public Skeleton
+
+include("baseline.jl")
+public Baseline, BaselineFit
 
 end # module
