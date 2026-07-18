@@ -10,10 +10,62 @@ loaded, and grow it into tutorials as the package develops.
 using MultiHubForecaster
 ```
 
-## A first example
+## Scoring a forecast
 
-_Replace this with a short, runnable example that shows the package's main
-entry point._
+Score a quantile forecast with the weighted interval score and read off its
+decomposition:
+
+```julia
+using MultiHubForecaster
+
+levels = [0.025, 0.25, 0.5, 0.75, 0.975]
+values = [1.0, 2.0, 3.0, 4.0, 5.0]
+result = weighted_interval_score(3.0, values, levels)
+# result.wis, result.dispersion, result.overprediction, result.underprediction
+
+# Is the observation inside the 95% central interval?
+interval_coverage(3.0, values, levels, 0.95)
+```
+
+The multivariate [`energy_score`](@ref) scores a joint sample forecast, where
+each column of `samples` is a draw and `observation` is the realised vector:
+
+```julia
+samples = randn(3, 500)          # 3 dimensions, 500 draws
+observation = zeros(3)
+energy_score(samples, observation)
+```
+
+## Writing a hubverse submission
+
+Given a forecast table in the hubverse schema (task-id columns plus
+`output_type`, `output_type_id`, `value`, and a `reference_date` and
+`model_id`), write it into a hubverse-hub clone:
+
+```julia
+write_submission(forecast_table, hub_path)          # csv + parquet
+write_model_metadata("team-model", hub_path,
+    (; team_abbr = "team", model_abbr = "model", designated_model = true))
+```
+
+## Loading a hub registry
+
+```julia
+hubs = load_registry("upstream-hubs/registry.toml")
+first(hubs).our_targets
+```
+
+## Validating a submission
+
+[`validate_submission`](@ref) runs the R `hubValidations` package, returning a
+structured result. It needs `Rscript` on `PATH` and the `hubValidations` R
+package installed; without them it returns an `available = false` result rather
+than raising.
+
+```julia
+res = validate_submission(hub_path, submission_file)
+res.available, res.passed, res.messages
+```
 
 ## Learning more
 

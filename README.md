@@ -15,10 +15,44 @@ Experiments, the local hub, the upstream-hub registry, and research notes live
 in the companion repo `MultiHubForecastExperiments`, which links this package
 as a submodule.
 
-## Development
+## Overview
+
+The package provides reusable tooling for working with hubverse forecast hubs,
+independent of any particular model:
+
+- hubverse submission I/O: write a forecast table to
+  `model-output/<model>/<ref_date>-<model>.csv` (and `.parquet`) plus
+  `model-metadata/<model>.yml`, in hubverse column order.
+- scoring: the weighted interval score with its decomposition, central
+  interval coverage, and the multivariate energy score for sample forecasts.
+- a registry loader that parses a hubverse-hub registry TOML into typed hub
+  configs.
+- a hub-validation wrapper that runs the R `hubValidations` package.
+- an abstract forecasting-model interface (`AbstractForecastModel`, `fit`,
+  `forecast`); no concrete model ships here.
+
+## Getting started
+
+```julia
+using MultiHubForecaster
+
+# Score a quantile forecast.
+levels = [0.025, 0.25, 0.5, 0.75, 0.975]
+values = [1.0, 2.0, 3.0, 4.0, 5.0]
+weighted_interval_score(3.0, values, levels)
+
+# Write a submission into a hubverse-hub clone.
+write_submission(forecast_table, hub_path)
+```
 
 - `julia --project=. -e 'using Pkg; Pkg.instantiate()'`
 - `julia --project=. -e 'using Pkg; Pkg.test()'`
+
+## Documentation
+
+Rendered documentation is published at
+[epiaware.org/MultiHubForecaster.jl](https://epiaware.org/MultiHubForecaster.jl/stable/),
+with the public API reference and a getting-started guide.
 
 <!-- standard-sections:start -->
 <!-- MANAGED by EpiAwarePackageTools.scaffold — do not edit between the
