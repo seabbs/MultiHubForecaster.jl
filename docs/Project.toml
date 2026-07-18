@@ -1,0 +1,34 @@
+# PACKAGE-OWNED — scaffold writes this once and never overwrites it.
+# The documentation environment: Documenter + DocumenterVitepress (the org docs
+# standard). Add doc-only deps (e.g. plotting, DocumenterCitations) here as the
+# docs grow. The package itself is pinned by path via `[sources]`.
+# The managed `docs/make.jl` calls `using EpiAwarePackageTools` (the shared docs
+# build machinery), so the kit is a docs dep too; until it is registered it is
+# pinned by git via `[sources]` (empty for the kit itself, which is the
+# package).
+# With `ad = true` the env also carries what the kit-managed AD-backends
+# tutorial page executes against: the package's `ADFixtures` registry (pinned
+# by path, same UUID as the AD test env) plus the benchmark and plotting stack.
+# With `benchmarks = true` it also carries `Plots` for the benchmark page's
+# combined trend plot (lazily loaded kit-side; absent here, the plot degrades
+# to an `@info` note rather than failing the build).
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+DocumenterCitations = "daee34ce-89f3-4625-b898-19384cb65244"
+DocumenterVitepress = "4710194d-e776-4893-9690-8d956a29c365"
+EpiAwarePackageTools = "7aaea248-0d11-4a0d-a7dc-86da30abb951"
+Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
+MultiHubForecaster = "525aad59-d3de-42a6-b01e-5bd86bbfc5c3"
+
+[sources]
+MultiHubForecaster = {path = ".."}
+# Until EpiAwarePackageTools is registered, it is pinned by git so
+# the env resolves out of the box. Switch to a local path to
+# develop the kit alongside this package.
+EpiAwarePackageTools = {url = "https://github.com/seabbs/EpiAwarePackageTools.jl", rev = "main"}
+
+[compat]
+Documenter = "1"
+DocumenterCitations = "1"
+DocumenterVitepress = "0.3"
+Literate = "2"

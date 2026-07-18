@@ -4,4 +4,7 @@ authors = ["Sam Abbott"]
 version = "0.1.0"
 
 [compat]
-julia = "1.10"
+julia = "1.11, 1.12"
+
+[workspace]
+projects = ["test", "docs"]

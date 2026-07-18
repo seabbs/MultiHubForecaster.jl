@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "MultiHubForecaster.jl"
+type: software
+authors:
+  - name: "Sam Abbott"
+repository-code: "https://github.com/seabbs/MultiHubForecaster.jl"
+url: "https://github.com/seabbs/MultiHubForecaster.jl"
