@@ -57,6 +57,17 @@ export HubValidationResult, validate_submission
 include("model_interface.jl")
 export AbstractForecastModel, fit, forecast
 
+# Model components as structs with dispatch (abstract types + concrete structs
+# with per-component priors, EpiAware-style) and the generic `generate` function.
+# All `public` (Julia 1.11 keyword) but not exported; reached as
+# `MultiHubForecaster.<name>`.
+include("components.jl")
+public AbstractLink, LogLink, LogitLink, apply_link, inverse_link
+public AbstractLatent, ARGrowthRate
+public AbstractSeasonality, FourierSeasonality
+public AbstractObservation, NegativeBinomialObs, BetaObs
+public generate
+
 # The generic `Skeleton` framing and the `Baseline` model built on it. Both are
 # `public` (Julia 1.11 keyword) but not exported; reached as
 # `MultiHubForecaster.Skeleton` / `.Baseline`.
