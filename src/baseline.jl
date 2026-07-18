@@ -168,6 +168,9 @@ observation model chosen by `target_type` (negative binomial for `:count`
 targets, Beta for `:proportion` targets). Latent trajectories are per location;
 no cross-location pooling is added yet.
 
+Its `priors` field carries the prior settings (see
+`MultiHubForecaster._default_priors`).
+
 `Baseline <: `[`AbstractForecastModel`](@ref) and adds [`fit`](@ref) and
 [`forecast`](@ref) methods. It is `public` (reached as
 `MultiHubForecaster.Baseline`) but not exported.
@@ -274,6 +277,10 @@ integer time-index column, and a value column (`location_col`, `time_col`,
 multi-threaded NUTS through `adtype` (an `ADTypes` backend; default
 `AutoForwardDiff`). Returns a [`BaselineFit`](@ref).
 
+# Arguments
+  - `model`: the [`Baseline`](@ref) configuration to fit.
+  - `target_data`: the target-data table (see above).
+
 # Keyword arguments
   - `adtype`: the AD backend (e.g. `ADTypes.AutoMooncake(; config = nothing)`).
   - `ndraws`, `nchains`: total post-warmup draws and number of chains.
@@ -379,14 +386,19 @@ model-output schema (`reference_date`, `target`, `horizon`, `target_end_date`,
 `location`, `output_type`, `output_type_id`, `value`), ready for the scoring and
 hubverse-I/O tools.
 
-`spec` is a `NamedTuple` describing the request:
-  - `horizon`: number of future weeks (required).
-  - `reference_date::Dates.Date`: the forecast origin (required).
-  - `target::AbstractString`: the hubverse target name (required).
-  - `quantile_levels`: quantile grid for `:quantile` output (default the
-    FluSight grid).
-  - `output_types`: any of `:quantile`, `:sample` (default `(:quantile,)`).
-  - `n_samples`: cap on `:sample` rows per task (default `100`).
+# Arguments
+  - `fitted`: the [`BaselineFit`](@ref) returned by [`fit`](@ref).
+  - `spec::NamedTuple`: the forecast request, with fields:
+      + `horizon`: number of future weeks (required).
+      + `reference_date::Dates.Date`: the forecast origin (required).
+      + `target::AbstractString`: the hubverse target name (required).
+      + `quantile_levels`: quantile grid for `:quantile` output (default the
+        FluSight grid).
+      + `output_types`: any of `:quantile`, `:sample` (default `(:quantile,)`).
+      + `n_samples`: cap on `:sample` rows per task (default `100`).
+
+# Keyword arguments
+  - `rng`: random number generator for the horizon innovation tails and draws.
 """
 function forecast(fitted::BaselineFit, spec;
         rng::Random.AbstractRNG = Random.default_rng())

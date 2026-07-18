@@ -74,7 +74,7 @@ end
             z[t] = 0.5 * z[t - 1] + 0.15 * randn()
         end
         [rand(D.NegativeBinomial(15,
-                15 / (15 + exp(level + 0.4 * sin(2π * t / 52) + z[t]))))
+             15 / (15 + exp(level + 0.4 * sin(2π * t / 52) + z[t]))))
          for t in 1:n]
     end
     n = 70

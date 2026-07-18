@@ -20,24 +20,27 @@ than by editing this function.
 The four components are each a *builder* — a callable returning a
 `DynamicPPL.Model` — so a component whose submodel depends on a value drawn
 earlier (the observation, which needs the latent linear predictor) can be built
-against that value at run time:
+against that value at run time.
 
-  - `latent(n)`: a submodel returning a length-`n` latent path on the linear-
-    predictor (log or logit) scale.
-  - `seasonality(n)`: a submodel returning a length-`n` seasonal effect on the
-    same scale, added to the latent path.
-  - `backfill(n)`: a submodel returning a length-`n` reporting-completion vector
-    in ``(0, 1]`` (``1`` where a week is fully reported), applied multiplicatively
-    to the natural-scale mean.
-  - `observation(η, completion)`: a submodel that applies its link to the linear
-    predictor `η`, scales by `completion`, and observes (or predicts) the data.
-
-`params::NamedTuple` carries the shared settings; it must provide `params.n`, the
-series length. The model returns `(; η, completion, obs)`: the linear predictor,
-the completion vector, and the observation submodel's return value.
+The model returns `(; η, completion, obs)`: the linear predictor, the completion
+vector, and the observation submodel's return value.
 
 `Skeleton` is `public` (reached as `MultiHubForecaster.Skeleton`) but not
 exported; [`Baseline`](@ref) is a minimal-complete instance of it.
+
+# Arguments
+  - `latent(n)`: a builder returning a submodel for a length-`n` latent path on
+    the linear-predictor (log or logit) scale.
+  - `seasonality(n)`: a builder returning a submodel for a length-`n` seasonal
+    effect on the same scale, added to the latent path.
+  - `backfill(n)`: a builder returning a submodel for a length-`n` reporting-
+    completion vector in ``(0, 1]`` (``1`` where a week is fully reported),
+    applied multiplicatively to the natural-scale mean.
+  - `observation(η, completion)`: a builder returning a submodel that applies its
+    link to the linear predictor `η`, scales by `completion`, and observes (or
+    predicts) the data.
+  - `params::NamedTuple`: the shared settings; must provide `params.n`, the
+    series length.
 """
 DynamicPPL.@model function Skeleton(
         latent, seasonality, backfill, observation, params::NamedTuple)
