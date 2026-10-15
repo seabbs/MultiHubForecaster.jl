@@ -30,6 +30,7 @@ EpiAwarePackageTools = {rev = "main", url = "https://github.com/EpiAware/EpiAwar
 MultiHubForecaster = {path = ".."}
 
 [compat]
+ADTypes = "1.22.2"
 Aqua = "0.8"
 BenchmarkTools = "1"
 CSV = "0.10"
